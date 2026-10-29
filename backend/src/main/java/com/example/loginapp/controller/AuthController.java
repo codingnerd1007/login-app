@@ -5,8 +5,10 @@ import com.example.loginapp.dto.CaptchaResponseDto;
 import com.example.loginapp.dto.LoginRequestDto;
 import com.example.loginapp.dto.LoginResponseDto;
 import com.example.loginapp.dto.OtpVerifyRequestDto;
+import com.example.loginapp.dto.PublicKeyResponseDto;
 import com.example.loginapp.service.AuthService;
 import com.example.loginapp.service.CaptchaService;
+import com.example.loginapp.util.RSAUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +29,11 @@ public class AuthController {
     @GetMapping("/captcha")
     public ResponseEntity<CaptchaResponseDto> getCaptcha() {
         return ResponseEntity.ok(captchaService.generateCaptcha());
+    }
+
+    @GetMapping("/public-key")
+    public ResponseEntity<PublicKeyResponseDto> getPublicKey() {
+        return ResponseEntity.ok(new PublicKeyResponseDto(RSAUtil.getPublicKeyBase64()));
     }
 
     @PostMapping("/login")

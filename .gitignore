@@ -3,6 +3,12 @@ backend/target/
 *.class
 *.log
 
+# Keystores and their passwords (never commit)
+backend/keys/
+*.p12
+*.jks
+*.password
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

@@ -1,30 +1,58 @@
 import { Injectable } from '@angular/core';
-import * as CryptoJS from 'crypto-js';
+import { Observable, from, map, shareReplay, switchMap } from 'rxjs';
 
-import { environment } from '../../../environments/environment';
+import { AuthService } from './auth.service';
 
 /**
- * AES/CBC/Pkcs7 encryption with a key and IV shared with the backend (AESUtil.java).
- * Output is Base64, which the backend decodes before decrypting.
+ * RSA-OAEP (SHA-256) encryption with the server's public key, using the browser's Web Crypto API.
+ * The public key is fetched from the backend; only the backend holds the private key
+ * (RSAUtil.java), so nothing in the frontend bundle can decrypt the values.
  */
 @Injectable({ providedIn: 'root' })
 export class EncryptionService {
-  private readonly key = CryptoJS.enc.Utf8.parse(environment.aesKey);
-  private readonly iv = CryptoJS.enc.Utf8.parse(environment.aesIv);
+  private publicKey$?: Observable<CryptoKey>;
 
-  encrypt(plainText: string): string {
-    return CryptoJS.AES.encrypt(CryptoJS.enc.Utf8.parse(plainText), this.key, {
-      iv: this.iv,
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7
-    }).toString();
+  constructor(private authService: AuthService) {}
+
+  /** Fetches and imports the public key once; later calls reuse it. */
+  loadPublicKey(): Observable<CryptoKey> {
+    if (!this.publicKey$) {
+      this.publicKey$ = this.authService.getPublicKey().pipe(
+        switchMap(res => from(crypto.subtle.importKey(
+          'spki',
+          this.base64ToBytes(res.publicKey),
+          { name: 'RSA-OAEP', hash: 'SHA-256' },
+          false,
+          ['encrypt']
+        ))),
+        shareReplay(1)
+      );
+    }
+    return this.publicKey$;
   }
 
-  decrypt(cipherText: string): string {
-    return CryptoJS.AES.decrypt(cipherText, this.key, {
-      iv: this.iv,
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7
-    }).toString(CryptoJS.enc.Utf8);
+  /** Forgets the cached key, e.g. after the server rejects a value it could not decrypt. */
+  clearPublicKey(): void {
+    this.publicKey$ = undefined;
+  }
+
+  /** Returns the Base64 RSA-OAEP ciphertext of the text. */
+  encrypt(plainText: string): Observable<string> {
+    return this.loadPublicKey().pipe(
+      switchMap(key => from(crypto.subtle.encrypt(
+        { name: 'RSA-OAEP' },
+        key,
+        new TextEncoder().encode(plainText)
+      ))),
+      map(cipherText => this.bytesToBase64(new Uint8Array(cipherText)))
+    );
+  }
+
+  private base64ToBytes(base64: string): Uint8Array {
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  }
+
+  private bytesToBase64(bytes: Uint8Array): string {
+    return btoa(String.fromCharCode(...bytes));
   }
 }

@@ -9,6 +9,7 @@ import {
   LoginRequest,
   LoginResponse,
   OtpVerifyRequest,
+  PublicKeyResponse,
   UserProfile
 } from '../models/auth.models';
 
@@ -23,6 +24,10 @@ export class AuthService {
 
   getCaptcha(): Observable<CaptchaResponse> {
     return this.http.get<CaptchaResponse>(`${this.authUrl}/captcha`);
+  }
+
+  getPublicKey(): Observable<PublicKeyResponse> {
+    return this.http.get<PublicKeyResponse>(`${this.authUrl}/public-key`);
   }
 
   /** Step 1: captcha + credentials. Password must already be encrypted. */

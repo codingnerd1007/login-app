@@ -3,9 +3,13 @@ export interface CaptchaResponse {
   captchaImage: string;
 }
 
+export interface PublicKeyResponse {
+  publicKey: string; // X.509 SPKI, Base64
+}
+
 export interface LoginRequest {
   username: string;
-  password: string; // AES encrypted
+  password: string; // RSA-OAEP encrypted, Base64
   captchaId: string;
   captchaText: string;
   browser?: string;
@@ -21,7 +25,7 @@ export interface LoginResponse {
 
 export interface OtpVerifyRequest {
   username: string;
-  otp: string; // AES encrypted
+  otp: string; // RSA-OAEP encrypted, Base64
 }
 
 export interface AuthResponse {
