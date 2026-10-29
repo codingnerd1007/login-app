@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router, RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, switchMap } from 'rxjs';
 
 import { AuthService } from '../../core/services/auth.service';
 import { EncryptionService } from '../../core/services/encryption.service';
@@ -41,7 +41,8 @@ export class LoginComponent implements OnInit, OnDestroy {
   ) {
     this.loginForm = this.fb.group({
       username: ['', [Validators.required]],
-      password: ['', [Validators.required]],
+      // RSA-2048 OAEP/SHA-256 can encrypt at most 190 bytes
+      password: ['', [Validators.required, Validators.maxLength(128)]],
       captchaText: ['', [Validators.required]]
     });
     this.otpForm = this.fb.group({
@@ -55,6 +56,9 @@ export class LoginComponent implements OnInit, OnDestroy {
       return;
     }
     this.loadCaptcha();
+    this.encryptionService.loadPublicKey().subscribe({
+      error: () => (this.errorMessage = 'Unable to load the encryption key. Please refresh the page.')
+    });
   }
 
   ngOnDestroy(): void {
@@ -82,15 +86,18 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.errorMessage = '';
     this.loading = true;
 
-    this.authService.login({
-      username: username.trim(),
-      password: this.encryptionService.encrypt(password),
-      captchaId: this.captchaId,
-      captchaText: captchaText.trim(),
-      browser: navigator.userAgent,
-      os: navigator.platform
-    })
-      .pipe(finalize(() => (this.loading = false)))
+    this.encryptionService.encrypt(password)
+      .pipe(
+        switchMap(encryptedPassword => this.authService.login({
+          username: username.trim(),
+          password: encryptedPassword,
+          captchaId: this.captchaId,
+          captchaText: captchaText.trim(),
+          browser: navigator.userAgent,
+          os: navigator.platform
+        })),
+        finalize(() => (this.loading = false))
+      )
       .subscribe({
         next: res => {
           this.otpSent = res.otpRequired;
@@ -99,7 +106,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.loginForm.disable();
           this.startOtpTimer(res.otpExpirySeconds);
         },
-        error: (err: HttpErrorResponse) => {
+        error: err => {
           this.errorMessage = this.extractError(err);
           // A captcha can only be used once, so always get a new one after a failed attempt
           this.loadCaptcha();
@@ -116,18 +123,21 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.errorMessage = '';
     this.loading = true;
 
-    this.authService.verifyOtp({
-      username: this.loginForm.getRawValue().username.trim(),
-      otp: this.encryptionService.encrypt(this.otpForm.value.otp)
-    })
-      .pipe(finalize(() => (this.loading = false)))
+    this.encryptionService.encrypt(this.otpForm.value.otp)
+      .pipe(
+        switchMap(encryptedOtp => this.authService.verifyOtp({
+          username: this.loginForm.getRawValue().username.trim(),
+          otp: encryptedOtp
+        })),
+        finalize(() => (this.loading = false))
+      )
       .subscribe({
         next: () => {
           this.stopOtpTimer();
           this.router.navigate(['/dashboard']);
         },
-        error: (err: HttpErrorResponse) => {
-          const error = err.error as ErrorResponse | null;
+        error: err => {
+          const error = err instanceof HttpErrorResponse ? err.error as ErrorResponse | null : null;
           if (error?.errorCode === 'OTP_EXPIRED') {
             this.resetToLogin();
           } else {
@@ -174,8 +184,16 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
-  private extractError(err: HttpErrorResponse): string {
+  /** Handles both API errors and Web Crypto failures (which are not HttpErrorResponses). */
+  private extractError(err: unknown): string {
+    if (!(err instanceof HttpErrorResponse)) {
+      return 'Unable to encrypt your details. Please refresh the page and try again.';
+    }
     const error = err.error as ErrorResponse | null;
+    if (error?.errorCode === 'DECRYPTION_FAILED') {
+      // The server key may have been rotated; fetch it again before the next attempt
+      this.encryptionService.clearPublicKey();
+    }
     if (error?.message) {
       return error.message;
     }

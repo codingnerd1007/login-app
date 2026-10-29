@@ -54,10 +54,7 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": [],
-            "allowedCommonJsDependencies": [
-              "crypto-js"
-            ]
+            "scripts": []
           },
           "configurations": {
             "production": {

@@ -1,6 +1,6 @@
 package com.example.loginapp.dto;
 
-import com.example.loginapp.util.AESUtil;
+import com.example.loginapp.util.RSAUtil;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,12 +16,12 @@ public class OtpVerifyRequestDto {
     @NotBlank(message = "Username is required")
     private String username;
 
-    /** AES encrypted (Base64) OTP as sent by the frontend. */
+    /** RSA-OAEP encrypted (Base64) OTP as sent by the frontend. */
     @NotBlank(message = "OTP is required")
     private String otp;
 
     /** Returns the decrypted (plain text) OTP. */
     public String getOtp() {
-        return AESUtil.decrypt(otp);
+        return RSAUtil.decrypt(otp);
     }
 }

@@ -1,6 +1,6 @@
 package com.example.loginapp.dto;
 
-import com.example.loginapp.util.AESUtil;
+import com.example.loginapp.util.RSAUtil;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,7 +16,7 @@ public class LoginRequestDto {
     @NotBlank(message = "Username is required")
     private String username;
 
-    /** AES encrypted (Base64) password as sent by the frontend. */
+    /** RSA-OAEP encrypted (Base64) password as sent by the frontend. */
     @NotBlank(message = "Password is required")
     private String password;
 
@@ -31,6 +31,6 @@ public class LoginRequestDto {
 
     /** Returns the decrypted (plain text) password. */
     public String getPassword() {
-        return AESUtil.decrypt(password);
+        return RSAUtil.decrypt(password);
     }
 }
