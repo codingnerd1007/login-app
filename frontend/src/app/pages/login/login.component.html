@@ -1,0 +1,71 @@
+<div class="login-page">
+  <div class="login-card">
+    <h1>Sign in</h1>
+    <p class="subtitle">Enter your credentials to continue</p>
+
+    <div class="alert alert-error" *ngIf="errorMessage">{{ errorMessage }}</div>
+    <div class="alert alert-info" *ngIf="infoMessage && otpSent">
+      {{ infoMessage }} <strong>{{ maskedEmail }}</strong>
+    </div>
+
+    <form [formGroup]="loginForm" (ngSubmit)="onLogin()" novalidate>
+      <div class="form-field">
+        <label for="username">Username</label>
+        <input id="username" type="text" formControlName="username" autocomplete="username" />
+        <small class="field-error"
+               *ngIf="loginForm.get('username')?.touched && loginForm.get('username')?.hasError('required')">
+          Username is required
+        </small>
+      </div>
+
+      <div class="form-field">
+        <label for="password">Password</label>
+        <input id="password" type="password" formControlName="password" autocomplete="current-password" />
+        <small class="field-error"
+               *ngIf="loginForm.get('password')?.touched && loginForm.get('password')?.hasError('required')">
+          Password is required
+        </small>
+      </div>
+
+      <div class="form-field">
+        <label for="captchaText">Captcha</label>
+        <div class="captcha-row">
+          <img *ngIf="captchaImage" [src]="captchaImage" alt="Captcha" class="captcha-img" />
+          <button type="button" class="btn-link" (click)="loadCaptcha()" [disabled]="otpSent"
+                  title="Refresh captcha">&#x21bb; Refresh</button>
+        </div>
+        <input id="captchaText" type="text" formControlName="captchaText" autocomplete="off"
+               placeholder="Enter the text shown above" />
+        <small class="field-error"
+               *ngIf="loginForm.get('captchaText')?.touched && loginForm.get('captchaText')?.hasError('required')">
+          Captcha is required
+        </small>
+      </div>
+
+      <button *ngIf="!otpSent" type="submit" class="btn-primary" [disabled]="loading">
+        {{ loading ? 'Please wait...' : 'Submit' }}
+      </button>
+    </form>
+
+    <form *ngIf="otpSent" [formGroup]="otpForm" (ngSubmit)="onVerifyOtp()" novalidate class="otp-form">
+      <div class="form-field">
+        <label for="otp">OTP</label>
+        <input id="otp" type="text" inputmode="numeric" maxlength="6" formControlName="otp"
+               autocomplete="one-time-code" placeholder="6-digit OTP" />
+        <small class="field-error" *ngIf="otpForm.get('otp')?.touched && otpForm.get('otp')?.invalid">
+          Enter the 6-digit OTP
+        </small>
+        <small class="hint">OTP expires in {{ otpTimeLeft }}</small>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="loading">
+        {{ loading ? 'Verifying...' : 'Verify OTP' }}
+      </button>
+      <button type="button" class="btn-link" (click)="resetToLogin()">Back to login</button>
+    </form>
+
+    <div class="footer-links">
+      <a routerLink="/forgot-password">Forgot password?</a>
+    </div>
+  </div>
+</div>
