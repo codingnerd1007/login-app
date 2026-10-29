@@ -8,6 +8,7 @@ import {
   CaptchaResponse,
   LoginRequest,
   LoginResponse,
+  NonceResponse,
   OtpVerifyRequest,
   PublicKeyResponse,
   UserProfile
@@ -28,6 +29,10 @@ export class AuthService {
 
   getPublicKey(): Observable<PublicKeyResponse> {
     return this.http.get<PublicKeyResponse>(`${this.authUrl}/public-key`);
+  }
+
+  getNonce(): Observable<NonceResponse> {
+    return this.http.get<NonceResponse>(`${this.authUrl}/nonce`);
   }
 
   /** Step 1: captcha + credentials. Password must already be encrypted. */

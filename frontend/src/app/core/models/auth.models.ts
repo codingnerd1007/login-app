@@ -7,9 +7,13 @@ export interface PublicKeyResponse {
   publicKey: string; // X.509 SPKI, Base64
 }
 
+export interface NonceResponse {
+  nonce: string; // single use, goes inside the encrypted value
+}
+
 export interface LoginRequest {
   username: string;
-  password: string; // RSA-OAEP encrypted, Base64
+  password: string; // RSA-OAEP encrypted "nonce:password", Base64
   captchaId: string;
   captchaText: string;
   browser?: string;
@@ -25,7 +29,7 @@ export interface LoginResponse {
 
 export interface OtpVerifyRequest {
   username: string;
-  otp: string; // RSA-OAEP encrypted, Base64
+  otp: string; // RSA-OAEP encrypted "nonce:otp", Base64
 }
 
 export interface AuthResponse {

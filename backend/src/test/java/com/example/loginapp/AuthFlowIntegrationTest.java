@@ -1,5 +1,7 @@
 package com.example.loginapp;
 
+import com.example.loginapp.dto.LoginRequestDto;
+import com.example.loginapp.exception.ReplayDetectedException;
 import com.example.loginapp.service.CaptchaService;
 import com.example.loginapp.service.EmailService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.OAEPParameterSpec;
@@ -32,6 +35,7 @@ import java.util.Base64;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -209,6 +213,93 @@ class AuthFlowIntegrationTest {
         mockMvc.perform(get("/api/user/me")).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void replayedPasswordWithFreshCaptchaIsRejected() throws Exception {
+        String capturedPassword = encrypt("Admin@123");
+
+        String firstCaptcha = fetchCaptchaId();
+        doNothing().when(captchaService).validateCaptcha(eq(firstCaptcha), anyString());
+        login(capturedPassword, firstCaptcha).andExpect(status().isOk());
+
+        // Attacker solves a new captcha and re-sends the captured encrypted password
+        String secondCaptcha = fetchCaptchaId();
+        doNothing().when(captchaService).validateCaptcha(eq(secondCaptcha), anyString());
+        login(capturedPassword, secondCaptcha)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REPLAY_DETECTED"));
+    }
+
+    @Test
+    void replayedOtpIsRejected() throws Exception {
+        String captchaId = fetchCaptchaId();
+        doNothing().when(captchaService).validateCaptcha(eq(captchaId), anyString());
+        login(encrypt("John@123"), captchaId, "john").andExpect(status().isOk());
+
+        String capturedOtp = encrypt("000000");
+        verifyOtp("john", capturedOtp)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_OTP"));
+        verifyOtp("john", capturedOtp)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REPLAY_DETECTED"));
+    }
+
+    @Test
+    void valueWithoutNonceIsRejected() throws Exception {
+        String captchaId = fetchCaptchaId();
+        doNothing().when(captchaService).validateCaptcha(eq(captchaId), anyString());
+        login(encryptRaw("Admin@123"), captchaId)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REPLAY_DETECTED"));
+    }
+
+    @Test
+    void valueWithMadeUpNonceIsRejected() throws Exception {
+        String captchaId = fetchCaptchaId();
+        doNothing().when(captchaService).validateCaptcha(eq(captchaId), anyString());
+        login(encryptRaw("AAAAAAAAAAAAAAAAAAAAAA:Admin@123"), captchaId)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REPLAY_DETECTED"));
+    }
+
+    @Test
+    void passwordGetterCanOnlyBeCalledOnce() throws Exception {
+        LoginRequestDto dto = new LoginRequestDto();
+        dto.setPassword(encrypt("Admin@123"));
+
+        assertThat(dto.getPassword()).isEqualTo("Admin@123");
+        assertThatThrownBy(dto::getPassword).isInstanceOf(ReplayDetectedException.class);
+    }
+
+    @Test
+    void passwordContainingSeparatorIsKeptWhole() throws Exception {
+        LoginRequestDto dto = new LoginRequestDto();
+        dto.setPassword(encrypt("pa:ss:word"));
+
+        assertThat(dto.getPassword()).isEqualTo("pa:ss:word");
+    }
+
+    private ResultActions login(String encryptedPassword, String captchaId) throws Exception {
+        return login(encryptedPassword, captchaId, "admin");
+    }
+
+    private ResultActions login(String encryptedPassword, String captchaId,
+                                                                      String username) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of(
+                        "username", username,
+                        "password", encryptedPassword,
+                        "captchaId", captchaId,
+                        "captchaText", "anything"))));
+    }
+
+    private ResultActions verifyOtp(String username, String encryptedOtp) throws Exception {
+        return mockMvc.perform(post("/api/auth/verify-otp")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("username", username, "otp", encryptedOtp))));
+    }
+
     private String fetchCaptchaId() throws Exception {
         String body = mockMvc.perform(get("/api/auth/captcha"))
                 .andExpect(status().isOk())
@@ -217,8 +308,15 @@ class AuthFlowIntegrationTest {
         return node.get("captchaId").asText();
     }
 
-    /** Encrypts like the frontend: Web Crypto RSA-OAEP with SHA-256, Base64 output. */
+    /** Encrypts like the frontend: fresh nonce, then "nonce:value" with RSA-OAEP SHA-256, Base64 output. */
     private String encrypt(String plainText) throws Exception {
+        String body = mockMvc.perform(get("/api/auth/nonce"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return encryptRaw(objectMapper.readTree(body).get("nonce").asText() + ":" + plainText);
+    }
+
+    private String encryptRaw(String plainText) throws Exception {
         Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
         cipher.init(Cipher.ENCRYPT_MODE, publicKey, OAEP_SHA256);
         return Base64.getEncoder().encodeToString(cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8)));

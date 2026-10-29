@@ -5,6 +5,7 @@ Angular 17 + Spring Boot 3 login with captcha, RSA-encrypted password/OTP and em
 ## Login flow
 
 0. `GET /api/auth/public-key` returns `{ publicKey }`, the server's RSA public key (X.509 SPKI, Base64). The login page fetches it once.
+   `GET /api/auth/nonce` returns `{ nonce }`, a single-use value. The frontend fetches a fresh one before encrypting each password or OTP (see Replay protection).
 1. `GET /api/auth/captcha` returns `{ captchaId, captchaImage }` (a server-generated PNG; the answer is kept in memory for 2 minutes and can be used once).
 2. `POST /api/auth/login` with `{ username, password, captchaId, captchaText, browser, os }`.
    - `password` is RSA encrypted on the frontend (`EncryptionService`).
@@ -16,7 +17,8 @@ Angular 17 + Spring Boot 3 login with captcha, RSA-encrypted password/OTP and em
 4. `GET /api/user/me` (requires `Authorization: Bearer <jwt>`) backs the dashboard.
 
 Errors come back as `{ timestamp, status, errorCode, message }`, where `errorCode` is one of
-`INVALID_CAPTCHA`, `INVALID_CREDENTIALS`, `INVALID_OTP`, `OTP_EXPIRED`, `DECRYPTION_FAILED` or `VALIDATION_FAILED`.
+`INVALID_CAPTCHA`, `INVALID_CREDENTIALS`, `INVALID_OTP`, `OTP_EXPIRED`, `DECRYPTION_FAILED`, `REPLAY_DETECTED`,
+`NONCE_UNAVAILABLE` or `VALIDATION_FAILED`.
 
 ## Encryption
 
@@ -30,7 +32,20 @@ The password and OTP are encrypted with **RSA-OAEP (SHA-256, MGF1 SHA-256), 2048
 - Java must use an explicit `OAEPParameterSpec` with MGF1 SHA-256: the shorthand
   `OAEPWithSHA-256AndMGF1Padding` uses SHA-1 for MGF1 and fails against Web Crypto.
 - Web Crypto needs a secure context (HTTPS, or `localhost` in development).
-- RSA-2048 OAEP/SHA-256 can encrypt at most 190 bytes, so passwords are limited to 128 characters.
+- RSA-2048 OAEP/SHA-256 can encrypt at most 190 bytes. The nonce and separator take 23, so passwords are
+  limited to 128 characters (and the frontend checks the encoded size).
+
+### Replay protection
+
+Every encrypted value is `nonce:value`, where the nonce comes from `GET /api/auth/nonce`
+(16 random bytes, Base64URL). `RSAUtil.decrypt` splits off the nonce and consumes it via `NonceService`;
+an unknown, expired (2 minutes) or already-used nonce is rejected with `400 REPLAY_DETECTED`.
+A captured encrypted password or OTP therefore cannot be sent again, even with a freshly solved captcha.
+
+- The DTOs and `AuthService` are unchanged: `getPassword()` / `getOtp()` still just call `RSAUtil.decrypt`.
+- Because decrypting consumes the nonce, **call `getPassword()` / `getOtp()` only once per request** and keep the result.
+- At most `app.nonce.max-active` (10,000) nonces are outstanding; beyond that `/nonce` returns `503 NONCE_UNAVAILABLE`.
+- Nonces are kept in memory, which suits a single server. Several servers would need a shared store (e.g. Redis).
 
 ### Keystore
 

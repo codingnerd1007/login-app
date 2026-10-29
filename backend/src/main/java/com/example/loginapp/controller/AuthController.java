@@ -4,10 +4,12 @@ import com.example.loginapp.dto.AuthResponseDto;
 import com.example.loginapp.dto.CaptchaResponseDto;
 import com.example.loginapp.dto.LoginRequestDto;
 import com.example.loginapp.dto.LoginResponseDto;
+import com.example.loginapp.dto.NonceResponseDto;
 import com.example.loginapp.dto.OtpVerifyRequestDto;
 import com.example.loginapp.dto.PublicKeyResponseDto;
 import com.example.loginapp.service.AuthService;
 import com.example.loginapp.service.CaptchaService;
+import com.example.loginapp.service.NonceService;
 import com.example.loginapp.util.RSAUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class AuthController {
 
     private final CaptchaService captchaService;
     private final AuthService authService;
+    private final NonceService nonceService;
 
     @GetMapping("/captcha")
     public ResponseEntity<CaptchaResponseDto> getCaptcha() {
@@ -34,6 +37,11 @@ public class AuthController {
     @GetMapping("/public-key")
     public ResponseEntity<PublicKeyResponseDto> getPublicKey() {
         return ResponseEntity.ok(new PublicKeyResponseDto(RSAUtil.getPublicKeyBase64()));
+    }
+
+    @GetMapping("/nonce")
+    public ResponseEntity<NonceResponseDto> getNonce() {
+        return ResponseEntity.ok(new NonceResponseDto(nonceService.generateNonce()));
     }
 
     @PostMapping("/login")
