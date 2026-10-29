@@ -2,6 +2,9 @@
 
 Angular 17 + Spring Boot 3 login with captcha, RSA-encrypted password/OTP and email OTP.
 
+> **Full project context** (architecture, design decisions, branches, known gaps, rules for contributors and AI agents):
+> see [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md).
+
 ## Login flow
 
 0. `GET /api/auth/public-key` returns `{ publicKey }`, the server's RSA public key (X.509 SPKI, Base64). The login page fetches it once.
